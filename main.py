@@ -13,6 +13,7 @@
 
 
 # region import
+from msilib.schema import Class
 import sys
 import pygame
 import pygame.freetype
@@ -27,25 +28,27 @@ font_style = pygame.font.SysFont(None, 50)
 
 pygame.display.set_caption("Snake")
 
-DIMENTION_OF_A_CELL = 25
-NUM_OF_ROWS = 25
-NUM_OF_COLUMNS = 33
-SIZE = WIDTH, HEIGHT = DIMENTION_OF_A_CELL * \
-    NUM_OF_COLUMNS, DIMENTION_OF_A_CELL*NUM_OF_ROWS
-NUMBER_OF_CELLS = NUM_OF_ROWS*NUM_OF_COLUMNS
+from costant_screen import *
 
 screen = pygame.display.set_mode(SIZE)
 
+from costant_images import * 
+
 directions = [1, 0]
-green = (0, 150, 0)
-red = (211, 0, 0)
-dark_yellow = (255, 198, 26)
-blue = 50, 168, 164
+SNAKE_COLOR = (179, 134, 0)
+TEXT_COLOR_VICTORY = (140, 217, 179)
+TEXT_COLOR_DEFEAT = (255, 51, 51)
+APPLE_COLOR = (211, 0, 0)
+BORDER_GRID_COLOR = (255, 198, 26)
+BACKGROUND_GRID_COLOR =(50, 168, 164)
+BACKGROUND_COLOR = (26, 26, 0)
+
+class Direction:
+    UP_DIR, RIGHT_DIR, DOWN_DIR, LEFT_DIR = 1, 2, 3, 4
 
 clock = pygame.time.Clock()
 
 # endregion
-
 
 def generate_apple_position(snake):
     apple_position = [random.randint(0, NUM_OF_COLUMNS-1)*DIMENTION_OF_A_CELL,
@@ -62,39 +65,128 @@ has_lost = False
 
 
 def restart():
-    global position, score, snake_list, game_over, game_started, apple_position, has_lost
+    global position, score, snake_list, game_over, game_started, apple_position, has_lost, path
+    
     position = [NUM_OF_COLUMNS//2*DIMENTION_OF_A_CELL,
                 NUM_OF_ROWS//2*DIMENTION_OF_A_CELL]
     score = 1
     snake_list = [[position[0], position[1]]]
     game_started = False
     game_over = False
+    pygame.draw.rect(screen, BACKGROUND_COLOR, [0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT])
+    path = generate_hamiltonian_cycle(snake_list[0][::-1])
+    time.sleep(5)
+    print(path)
     apple_position = generate_apple_position(snake_list)
 
     return
+    
+
+def generate_hamiltonian_cycle(start_pos):
+    start_pos[0]//=DIMENTION_OF_A_CELL
+    start_pos[1]//=DIMENTION_OF_A_CELL
+    grid = []
+    for i in range(NUM_OF_ROWS):
+        grid.append([])
+        for k in range(NUM_OF_COLUMNS):
+            grid[i].append(0)
+
+    cont = NUMBER_OF_CELLS
+    min_cont = [NUMBER_OF_CELLS]
+
+    stack = []
+    stack.append((list(start_pos), cont, 1))
+    while True and stack:   
+        for row in range(NUM_OF_ROWS):
+            for col in range(NUM_OF_COLUMNS):
+                
+                pygame.draw.rect(screen, BACKGROUND_GRID_COLOR, [
+                     MARGIN_LEFT + col*DIMENTION_OF_A_CELL, MARGIN_TOP + row*DIMENTION_OF_A_CELL, DIMENTION_OF_A_CELL, DIMENTION_OF_A_CELL])
+                pygame.draw.rect(screen, BORDER_GRID_COLOR, [
+                    MARGIN_LEFT + col*DIMENTION_OF_A_CELL, MARGIN_TOP + row*DIMENTION_OF_A_CELL, DIMENTION_OF_A_CELL, DIMENTION_OF_A_CELL], 2)
+                if (grid[row][col] != 0):                    
+                    match grid[row][col]:                        
+                        case Direction.UP_DIR:
+                            imgToInset = HAM_IMG_UP.copy()
+                        case Direction.RIGHT_DIR:                            
+                            imgToInset = HAM_IMG_RIGHT.copy()
+                        case Direction.DOWN_DIR:
+                            imgToInset = HAM_IMG_DOWN.copy()
+                        case Direction.LEFT_DIR:
+                            imgToInset = HAM_IMG_LEFT.copy()
+                        
+                    
+                    screen.blit(imgToInset, (MARGIN_LEFT+col*DIMENTION_OF_A_CELL,  MARGIN_TOP+ row*DIMENTION_OF_A_CELL))
+                
+        pygame.display.update()
+        
+        pos, cont, i = stack[-1]  
+        if cont == 0:
+            if pos == start_pos:
+                break
+            else:          
+                stack.pop()
+                grid[pos[0]][pos[1]] = 0
+                continue
+        
+        if min_cont[0]> cont:
+            min_cont[0] = cont
+        
+        grid[pos[0]][pos[1]] = i
+        next_pos = list(pos)
+        #1 up, 2 right, 3 down, 4 left
+        match i:
+            case Direction.UP_DIR:
+                if next_pos[0]>0 and (grid[next_pos[0]-1][next_pos[1]] ==0 or (cont == 1 and [next_pos[0]-1, next_pos[1]] == start_pos)):
+                    next_pos = [next_pos[0]-1, next_pos[1]]
+            case Direction.RIGHT_DIR:
+                if next_pos[1]<NUM_OF_COLUMNS-1 and (grid[next_pos[0]][next_pos[1]+1] ==0  or (cont == 1 and [next_pos[0], next_pos[1]+1] == start_pos)):
+                    next_pos = [next_pos[0], next_pos[1]+1]
+            case Direction.DOWN_DIR:
+                if pos[0]<NUM_OF_ROWS-1 and (grid[next_pos[0]+1][next_pos[1]] ==0  or (cont == 1 and [next_pos[0]+1, next_pos[1]] == start_pos)):
+                    next_pos = [next_pos[0]+1, next_pos[1]]
+            case Direction.LEFT_DIR:
+                if pos[1]>0 and (grid[next_pos[0]][next_pos[1]-1] ==0  or (cont == 1 and [next_pos[0], next_pos[1]-1] == start_pos)):
+                    next_pos = [next_pos[0], next_pos[1]-1]      
+            case _:
+                stack.pop()                
+                grid[pos[0]][pos[1]] = 0
+                continue
+
+        stack.pop()
+        stack.append((pos, cont, i+1))
+        if next_pos!=pos:
+            stack.append((next_pos, cont-1, 1))
+
+    return grid
+                
+
+
 
 
 restart()
+
+game_started = True
+
 
 while 1:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             sys.exit()
-        if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_LEFT:
-                game_started = True
-                directions = [-1, 0]
-            if event.key == pygame.K_RIGHT:
-                game_started = True
-                directions = [+1, 0]
-            if event.key == pygame.K_DOWN:
-                game_started = True
-                directions = [0, 1]
-            if event.key == pygame.K_UP:
-                game_started = True
-                directions = [0, -1]
+    x_Pos, y_Pos = int(position[0]/DIMENTION_OF_A_CELL), int(position[1]/DIMENTION_OF_A_CELL)
+    match path[y_Pos][x_Pos]:
+        case 1:                    
+            directions = [0, -1]
+        case 2:                  
+            directions = [1, 0]
+        case 3:                    
+            directions = [0, +1]
+        case 4:                  
+            directions = [-1, 0]
+            
 
-    pygame.draw.rect(screen, blue, [0, 0, WIDTH, HEIGHT])
+    pygame.draw.rect(screen, BACKGROUND_GRID_COLOR, [MARGIN_LEFT, MARGIN_TOP, WIDTH_GRID, HEIGHT_GRID])
+    
 
     if (game_started):
         old_snake = list(snake_list)
@@ -113,36 +205,39 @@ while 1:
         else:
             snake_list.pop(0)
 
-        if (position[0] >= WIDTH or position[0] < 0 or position[1] >= HEIGHT or position[1] < 0 or [position[0], position[1]] in old_snake and not game_over):
+        if (position[0] >= WIDTH_GRID or position[0] < 0 or position[1] >= HEIGHT_GRID or position[1] < 0 or [position[0], position[1]] in old_snake and not game_over):
             game_over = True
             has_lost = True
     if not game_over:
         for i in range(0, NUM_OF_COLUMNS):
             for k in range(0, NUM_OF_ROWS):
                 if ([i*DIMENTION_OF_A_CELL, k*DIMENTION_OF_A_CELL] == apple_position):
-                    pygame.draw.rect(screen, red, [
-                        i*DIMENTION_OF_A_CELL, k*DIMENTION_OF_A_CELL, DIMENTION_OF_A_CELL, DIMENTION_OF_A_CELL])
+                    pygame.draw.rect(screen, APPLE_COLOR, [
+                        MARGIN_LEFT + i*DIMENTION_OF_A_CELL, MARGIN_TOP + k*DIMENTION_OF_A_CELL, DIMENTION_OF_A_CELL, DIMENTION_OF_A_CELL])
                 elif ([i*DIMENTION_OF_A_CELL, k*DIMENTION_OF_A_CELL] not in snake_list):
-                    pygame.draw.rect(screen, dark_yellow, [
-                        i*DIMENTION_OF_A_CELL, k*DIMENTION_OF_A_CELL, DIMENTION_OF_A_CELL, DIMENTION_OF_A_CELL], 1)
+                    pygame.draw.rect(screen, BORDER_GRID_COLOR, [
+                        MARGIN_LEFT + i*DIMENTION_OF_A_CELL, MARGIN_TOP + k*DIMENTION_OF_A_CELL, DIMENTION_OF_A_CELL, DIMENTION_OF_A_CELL], 1)
                 else:
-                    pygame.draw.rect(screen, green, [
-                        i*DIMENTION_OF_A_CELL, k*DIMENTION_OF_A_CELL, DIMENTION_OF_A_CELL, DIMENTION_OF_A_CELL])
+                    pygame.draw.rect(screen, SNAKE_COLOR, [
+                        MARGIN_LEFT+i*DIMENTION_OF_A_CELL, MARGIN_TOP+k*DIMENTION_OF_A_CELL, DIMENTION_OF_A_CELL, DIMENTION_OF_A_CELL])
 
-        pygame.display.flip()
+        pygame.display.update()
 
     else:
-        pygame.draw.rect(screen, blue, [0, 0, WIDTH, HEIGHT])
+        pygame.draw.rect(screen, BACKGROUND_COLOR, [0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT])
         if (has_lost):
-            mesg = font_style.render("You lost :(", True, red)
+            mesg = font_style.render("You lost :(", True, APPLE_COLOR)
         else:
-            mesg = font_style.render("You won!!", True, (50, 168, 164))
+            mesg = font_style.render("You won!!", True, TEXT_COLOR_VICTORY)
+        
+        
 
-        screen.blit(mesg, [WIDTH/2, HEIGHT/2])
+        screen.blit(mesg, [DISPLAY_WIDTH/2 - mesg.get_rect().width/2, DISPLAY_HEIGHT/2-mesg.get_rect().height/2])
         pygame.display.flip()
         time.sleep(2)
 
     if game_over:
         restart()
+        game_started = True
 
     clock.tick(9)
