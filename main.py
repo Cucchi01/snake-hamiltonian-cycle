@@ -42,6 +42,9 @@ BORDER_GRID_COLOR = (255, 198, 26)
 BACKGROUND_GRID_COLOR = (50, 168, 164)
 BACKGROUND_COLOR = (26, 26, 0)
 
+TIME_SLEEP_HAMILTONIAN = 0.05
+CLOCK_TICK = 6
+
 
 class Direction:
     UP_DIR, RIGHT_DIR, DOWN_DIR, LEFT_DIR = 1, 2, 3, 4
@@ -84,7 +87,6 @@ def restart():
     pygame.draw.rect(screen, BACKGROUND_COLOR, [0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT])
     path = generate_hamiltonian_cycle(snake_list[0][::-1])
     time.sleep(5)
-    print(path)
     apple_position = generate_apple_position(snake_list)
 
     return
@@ -105,6 +107,10 @@ def generate_hamiltonian_cycle(start_pos):
     stack = []
     stack.append((list(start_pos), cont, 1))
     while True and stack:
+        time.sleep(TIME_SLEEP_HAMILTONIAN)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                sys.exit()
         for row in range(NUM_OF_ROWS):
             for col in range(NUM_OF_COLUMNS):
 
@@ -129,7 +135,15 @@ def generate_hamiltonian_cycle(start_pos):
                     ],
                     2,
                 )
-                if grid[row][col] != 0:
+                if [row, col] == start_pos:
+                    screen.blit(
+                        HAM_IMG_START.copy(),
+                        (
+                            MARGIN_LEFT + col * DIMENTION_OF_A_CELL,
+                            MARGIN_TOP + row * DIMENTION_OF_A_CELL,
+                        ),
+                    )
+                elif grid[row][col] != 0:
                     match grid[row][col]:
                         case Direction.UP_DIR:
                             imgToInset = HAM_IMG_UP.copy()
@@ -406,4 +420,4 @@ while 1:
         restart()
         game_started = True
 
-    clock.tick(15)
+    clock.tick(CLOCK_TICK)
