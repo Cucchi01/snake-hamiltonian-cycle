@@ -11,6 +11,7 @@
 
 
 # region import
+from copy import copy
 import sys
 import pygame
 import pygame.freetype
@@ -42,7 +43,7 @@ BORDER_GRID_COLOR = (255, 198, 26)
 BACKGROUND_GRID_COLOR = (50, 168, 164)
 BACKGROUND_COLOR = (26, 26, 0)
 
-TIME_SLEEP_HAMILTONIAN = 0  # 0.05
+TIME_SLEEP_HAMILTONIAN = 0.05
 CLOCK_TICK = 6
 
 
@@ -50,7 +51,28 @@ class Direction:
     UP_DIR, RIGHT_DIR, DOWN_DIR, LEFT_DIR = 1, 2, 3, 4
 
 
-Point = namedtuple("Point", "row col")
+# Position is used to define a cell in the grid
+class Position:
+    def __init__(self, row=0, col=0) -> None:
+        self.row = row
+        self.col = col
+
+    def isEqual(self, otherPosition) -> bool:
+        return self.row == otherPosition.row and self.col == otherPosition.col
+
+
+# Point is used to define a pixel in the screen
+class Point:
+    def __init__(self, x=0, y=0) -> None:
+        self.x = x
+        self.y = y
+
+    def isEqual(self, otherPoint) -> bool:
+        return self.x == otherPoint.x and self.y == otherPoint.y
+
+
+Point2 = namedtuple("Point", "row col")
+StackFrameHam = namedtuple("StackFrame", "position n_remaining_cells direction_to_try")
 
 
 clock = pygame.time.Clock()
@@ -59,10 +81,10 @@ clock = pygame.time.Clock()
 
 
 def gameLoop() -> None:
-    global directions, old_snake_list, game_over, has_lost, position_head
+    global directions, old_snake_list, game_over, has_lost, point_head
     while 1:
         manageEvents()
-        directions = getChangeInPosition(position_head)
+        directions = getChangeInPosition(point_head)
 
         pygame.draw.rect(
             screen,
@@ -71,7 +93,7 @@ def gameLoop() -> None:
         )
 
         old_snake_list = list(snake_list)
-        position_head = updateSnake()
+        point_head = updateSnake()
 
         if isGameLost():
             game_over = True
@@ -95,22 +117,23 @@ def manageEvents() -> None:
 
 
 def restart() -> None:
-    global position_head, score, snake_list, game_over, apple_position, has_lost, path
 
-    position_head = [
-        NUM_OF_COLUMNS // 2 * DIMENTION_OF_A_CELL,
-        NUM_OF_ROWS // 2 * DIMENTION_OF_A_CELL,
-    ]
+    global point_head, score, snake_list, game_over, apple_point, has_lost, path
+
+    point_head = Point(
+        x=NUM_OF_COLUMNS // 2 * DIMENTION_OF_A_CELL,
+        y=NUM_OF_ROWS // 2 * DIMENTION_OF_A_CELL,
+    )
     score = 1
-    snake_list = [[position_head[0], position_head[1]]]
+    snake_list = [copy(point_head)]
     game_over = False
     has_lost = False
     pygame.draw.rect(screen, BACKGROUND_COLOR, [0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT])
-    path = generation_hamiltonian_cycle(snake_list[0][::-1])
+    path = generation_hamiltonian_cycle(snake_list[0])
 
     gamePause(5)
 
-    apple_position = generate_apple_position(snake_list)
+    apple_point = generate_apple_position(snake_list)
 
     return
 
@@ -121,27 +144,25 @@ def gamePause(seconds: float) -> None:
         manageEvents()
 
 
-def generate_apple_position(snake: list) -> list:
-    apple_position = [
+def generate_apple_position(snake: list) -> Point:
+    apple_point = Point(
         random.randint(0, NUM_OF_COLUMNS - 1) * DIMENTION_OF_A_CELL,
         random.randint(0, NUM_OF_ROWS - 1) * DIMENTION_OF_A_CELL,
-    ]
-
-    while apple_position in snake:
-        apple_position = [
-            random.randint(0, NUM_OF_COLUMNS - 1) * DIMENTION_OF_A_CELL,
-            random.randint(0, NUM_OF_ROWS - 1) * DIMENTION_OF_A_CELL,
-        ]
-
-    return apple_position
-
-
-def getChangeInPosition(position_head: "Point") -> Direction:
-    col, row = int(position_head[0] / DIMENTION_OF_A_CELL), int(
-        position_head[1] / DIMENTION_OF_A_CELL
     )
 
-    match path[row][col]:
+    while isPointInSnake(apple_point, snake):
+        apple_point = Point(
+            random.randint(0, NUM_OF_COLUMNS - 1) * DIMENTION_OF_A_CELL,
+            random.randint(0, NUM_OF_ROWS - 1) * DIMENTION_OF_A_CELL,
+        )
+
+    return apple_point
+
+
+def getChangeInPosition(point_head: Point) -> Direction:
+    position_head = getPositionFromPoint(point_head)
+
+    match path[position_head.row][position_head.col]:
         case Direction.UP_DIR:
             directions = [0, -1]
         case Direction.RIGHT_DIR:
@@ -153,48 +174,55 @@ def getChangeInPosition(position_head: "Point") -> Direction:
     return directions
 
 
-def generation_hamiltonian_cycle(start_pos: "Point") -> list:
-    start_pos[0] //= DIMENTION_OF_A_CELL
-    start_pos[1] //= DIMENTION_OF_A_CELL
+def generation_hamiltonian_cycle(start_point: Point) -> list:
+    start_pos = getPositionFromPoint(start_point)
+
     grid = emptyMatrix()
 
     cells_to_fill_remaining = NUMBER_OF_CELLS
 
-    StackFrame = namedtuple("StackFrame", "position n_remaining_cells direction_to_try")
-
     stack = []
-    stack.append(StackFrame(list(start_pos), cells_to_fill_remaining, 1))
+    stack.append(StackFrameHam(copy(start_pos), cells_to_fill_remaining, 1))
+
     while True and stack:
         gamePause(TIME_SLEEP_HAMILTONIAN)
-        manageEvents()
 
+        manageEvents()
         drawGridHamiltonian(start_pos, grid)
 
+        # region manage last position in the path
+        pos: Position
         pos, cells_to_fill_remaining, direction_to_try = stack[-1]
 
         if cells_to_fill_remaining == 0:
-            if pos == start_pos:
+            if pos.isEqual(start_pos):
                 break
             else:
-                stack.pop()
-                grid[pos[0]][pos[1]] = 0
+                # it does not complete the cycle
+                removeTheLeaf(stack, grid, pos)
                 continue
 
-        grid[pos[0]][pos[1]] = direction_to_try
+        grid[pos.row][pos.col] = direction_to_try
 
+        next_pos: Position
+        next_pos: Position
         next_pos, end_possible_directions = getNextPosition(
             pos, direction_to_try, grid, cells_to_fill_remaining, start_pos
         )
 
         if end_possible_directions == True:
-            stack.pop()
-            grid[pos[0]][pos[1]] = 0
+            removeTheLeaf(stack, grid, pos)
             continue
 
-        stack.pop()
-        stack.append(StackFrame(pos, cells_to_fill_remaining, direction_to_try + 1))
-        if next_pos != pos:
-            stack.append((next_pos, cells_to_fill_remaining - 1, 1))
+        prepareFollowingStepInCurrentCell(
+            stack, StackFrameHam(pos, cells_to_fill_remaining, direction_to_try + 1)
+        )
+        if next_pos.isEqual(pos) == False:
+            addLeafToPath(
+                stack, StackFrameHam(next_pos, cells_to_fill_remaining - 1, 1)
+            )
+
+        # endregion
 
     return grid
 
@@ -205,13 +233,27 @@ def emptyMatrix(
     grid = []
     for i in range(n_rows):
         grid.append([])
-        for k in range(n_cols):
+        for _ in range(n_cols):
             grid[i].append(def_value)
 
     return grid
 
 
-def drawGridHamiltonian(start_pos: "Point", grid: "list") -> None:
+def removeTheLeaf(stack: list, grid: list, pos: Position) -> None:
+    stack.pop()
+    grid[pos.row][pos.col] = 0
+
+
+def prepareFollowingStepInCurrentCell(stack: list, stackFrame: StackFrameHam) -> None:
+    stack.pop()
+    stack.append(stackFrame)
+
+
+def addLeafToPath(stack: list, stackFrame: StackFrameHam) -> None:
+    stack.append(stackFrame)
+
+
+def drawGridHamiltonian(start_pos: Position, grid: "list") -> None:
     for row in range(NUM_OF_ROWS):
         for col in range(NUM_OF_COLUMNS):
             drawCellHam(row, col, start_pos, grid)
@@ -219,9 +261,9 @@ def drawGridHamiltonian(start_pos: "Point", grid: "list") -> None:
     pygame.display.update()
 
 
-def drawCellHam(row: "int", col: "int", start_pos: "Point", grid: "list") -> None:
+def drawCellHam(row: "int", col: "int", start_pos: Position, grid: "list") -> None:
     drawEmptyCellHam(row, col)
-    if [row, col] == start_pos:
+    if Position(row=row, col=col).isEqual(start_pos):
         drawStartHamCycle(row, col)
     elif grid[row][col] != 0:
         drawDirectionCell(row, col, grid)
@@ -282,30 +324,30 @@ def drawEmptyCellHam(row: int, col: int) -> None:
 
 
 def getNextPosition(
-    pos: "Point",
+    pos: Position,
     direction_to_try: Direction,
     grid: list,
     cells_to_fill_remaining: int,
-    start_pos: "Point",
+    start_pos: Position,
 ) -> tuple:
-    next_pos = list(pos)
+    next_pos = copy(pos)
     end_possible_dir = False
 
     match direction_to_try:
         case Direction.UP_DIR:
             if isMovementUpPossibleHam(pos, grid, start_pos, cells_to_fill_remaining):
-                next_pos = [next_pos[0] - 1, next_pos[1]]
+                next_pos.row -= 1
         case Direction.RIGHT_DIR:
             if isMovementRightPossibleHam(
                 pos, grid, start_pos, cells_to_fill_remaining
             ):
-                next_pos = [next_pos[0], next_pos[1] + 1]
+                next_pos.col += 1
         case Direction.DOWN_DIR:
             if isMovementDownPossibleHam(pos, grid, start_pos, cells_to_fill_remaining):
-                next_pos = [next_pos[0] + 1, next_pos[1]]
+                next_pos.row += 1
         case Direction.LEFT_DIR:
             if isMovementLeftPossibleHam(pos, grid, start_pos, cells_to_fill_remaining):
-                next_pos = [next_pos[0], next_pos[1] - 1]
+                next_pos.col -= 1
         case _:
             end_possible_dir = True
 
@@ -313,68 +355,81 @@ def getNextPosition(
 
 
 def isMovementUpPossibleHam(
-    pos: "Point", grid: list, start_pos: "Point", cells_to_fill_remaining: int
+    pos: Position, grid: list, start_pos: Position, cells_to_fill_remaining: int
 ) -> bool:
-    return pos[0] > 0 and (
-        grid[pos[0] - 1][pos[1]] == 0
-        or (cells_to_fill_remaining == 1 and [pos[0] - 1, pos[1]] == start_pos)
+    return pos.row > 0 and (
+        grid[pos.row - 1][pos.col] == 0
+        or (
+            cells_to_fill_remaining == 1
+            and Position(pos.row - 1, pos.col).isEqual(start_pos)
+        )
     )
 
 
 def isMovementRightPossibleHam(
-    pos: "Point", grid: list, start_pos: "Point", cells_to_fill_remaining: int
+    pos: Position, grid: list, start_pos: Position, cells_to_fill_remaining: int
 ) -> bool:
-    return pos[1] < NUM_OF_COLUMNS - 1 and (
-        grid[pos[0]][pos[1] + 1] == 0
-        or (cells_to_fill_remaining == 1 and [pos[0], pos[1] + 1] == start_pos)
+    return pos.col < NUM_OF_COLUMNS - 1 and (
+        grid[pos.row][pos.col + 1] == 0
+        or (
+            cells_to_fill_remaining == 1
+            and Position(pos.row, pos.col + 1).isEqual(start_pos)
+        )
     )
 
 
 def isMovementDownPossibleHam(
-    pos: "Point", grid: list, start_pos: "Point", cells_to_fill_remaining: int
+    pos: Position, grid: list, start_pos: Position, cells_to_fill_remaining: int
 ) -> bool:
-    return pos[0] < NUM_OF_ROWS - 1 and (
-        grid[pos[0] + 1][pos[1]] == 0
-        or (cells_to_fill_remaining == 1 and [pos[0] + 1, pos[1]] == start_pos)
+    return pos.row < NUM_OF_ROWS - 1 and (
+        grid[pos.row + 1][pos.col] == 0
+        or (
+            cells_to_fill_remaining == 1
+            and Position(pos.row + 1, pos.col).isEqual(start_pos)
+        )
     )
 
 
 def isMovementLeftPossibleHam(
-    pos: "Point", grid: list, start_pos: "Point", cells_to_fill_remaining: int
+    pos: Position, grid: list, start_pos: Position, cells_to_fill_remaining: int
 ) -> bool:
-    return pos[1] > 0 and (
-        grid[pos[0]][pos[1] - 1] == 0
-        or (cells_to_fill_remaining == 1 and [pos[0], pos[1] - 1] == start_pos)
+    return pos.col > 0 and (
+        grid[pos.row][pos.col - 1] == 0
+        or (
+            cells_to_fill_remaining == 1
+            and Position(pos.row, pos.col - 1).isEqual(start_pos)
+        )
     )
 
 
-def updateSnake() -> "Point":
-    global game_over, has_lost, snake_list, score, apple_position
-    position_head[0] += DIMENTION_OF_A_CELL * directions[0]
-    position_head[1] += DIMENTION_OF_A_CELL * directions[1]
-    snake_list.append(list(position_head))
+def updateSnake() -> Point:
+    global game_over, has_lost, snake_list, score, apple_point
+    point_head.x += DIMENTION_OF_A_CELL * directions[0]
+    point_head.y += DIMENTION_OF_A_CELL * directions[1]
 
-    if position_head == apple_position:
+    snake_list.append(copy(point_head))
+
+    if point_head.isEqual(apple_point):
         score += 1
         if NUMBER_OF_CELLS == score:
             game_over = True
             has_lost = False
         else:
-            apple_position = generate_apple_position(snake_list)
+            apple_point = generate_apple_position(snake_list)
 
     else:
         snake_list.pop(0)
 
-    return position_head
+    return point_head
 
 
 def isGameLost() -> bool:
     return (
-        position_head[0] >= WIDTH_GRID
-        or position_head[0] < 0
-        or position_head[1] >= HEIGHT_GRID
-        or position_head[1] < 0
-        or [position_head[0], position_head[1]] in old_snake_list
+        point_head.x >= WIDTH_GRID
+        or point_head.x < 0
+        or point_head.y >= HEIGHT_GRID
+        or point_head.y < 0
+        or point_head in old_snake_list
         and not game_over
     )
 
@@ -388,14 +443,14 @@ def drawGridGame() -> None:
 
 
 def drawCellGame(row: int, col: int) -> None:
-    position_col = col * DIMENTION_OF_A_CELL
-    position_row = row * DIMENTION_OF_A_CELL
-    if [position_col, position_row] == apple_position:
+    position = Position(row, col)
+    point = getPointFromPosition(Position(row, col))
+    if point.isEqual(apple_point):
         drawApple(row, col)
-    elif [position_col, position_row] not in snake_list:
+    elif isPointInSnake(point, snake_list) == False:
         drawEmptyCellGame(row, col)
     else:
-        drawSnakeCell(row, col)
+        drawSnakeCell(position)
 
 
 def drawApple(row: int, col: int) -> None:
@@ -425,22 +480,23 @@ def drawEmptyCellGame(row: int, col: int) -> None:
     )
 
 
-def drawSnakeCell(row: int, col: int) -> None:
-    new_pos_grd = (row, col)
-    old_pos_grid = getOldPosGrid(row, col)
-    imgToInsert = getCorrispondingImage(old_pos_grid, new_pos_grd)
+def drawSnakeCell(new_pos_grid: Position) -> None:
+    old_pos_grid = getOldPosGrid(new_pos_grid)
+    imgToInsert = getCorrispondingImage(old_pos_grid, new_pos_grid)
     screen.blit(
         imgToInsert,
         (
-            MARGIN_LEFT + col * DIMENTION_OF_A_CELL,
-            MARGIN_TOP + row * DIMENTION_OF_A_CELL,
+            MARGIN_LEFT + new_pos_grid.col * DIMENTION_OF_A_CELL,
+            MARGIN_TOP + new_pos_grid.row * DIMENTION_OF_A_CELL,
         ),
     )
 
 
-def getCorrispondingImage(old_pos_grid: "Point", new_pos_grid: "Point") -> pygame.image:
+def getCorrispondingImage(
+    old_pos_grid: Position, new_pos_grid: Position
+) -> pygame.image:
     if old_pos_grid == None:
-        match path[new_pos_grid[0]][new_pos_grid[1]]:
+        match path[new_pos_grid.row][new_pos_grid.col]:
             case Direction.UP_DIR:
                 imgToInset = SNAKE_TOP_BOTTOM.copy()
             case Direction.RIGHT_DIR:
@@ -450,17 +506,17 @@ def getCorrispondingImage(old_pos_grid: "Point", new_pos_grid: "Point") -> pygam
             case Direction.LEFT_DIR:
                 imgToInset = SNAKE_LEFT_RIGHT.copy()
     else:
-        entering_left = new_pos_grid[1] - old_pos_grid[1] == 1
-        entering_right = new_pos_grid[1] - old_pos_grid[1] == -1
-        entering_top = new_pos_grid[0] - old_pos_grid[0] == 1
-        entering_bottom = new_pos_grid[0] - old_pos_grid[0] == -1
+        entering_left = new_pos_grid.col - old_pos_grid.col == 1
+        entering_right = new_pos_grid.col - old_pos_grid.col == -1
+        entering_top = new_pos_grid.row - old_pos_grid.row == 1
+        entering_bottom = new_pos_grid.row - old_pos_grid.row == -1
 
         leaving_top = False
         leaving_right = False
         leaving_bottom = False
         leaving_left = False
 
-        match path[new_pos_grid[0]][new_pos_grid[1]]:
+        match path[new_pos_grid.row][new_pos_grid.col]:
             case Direction.UP_DIR:
                 leaving_top = True
             case Direction.RIGHT_DIR:
@@ -486,52 +542,61 @@ def getCorrispondingImage(old_pos_grid: "Point", new_pos_grid: "Point") -> pygam
     return imgToInset
 
 
-def getOldPosGrid(row: int, col: int) -> "Point":
+def getOldPosGrid(new_pos: Position) -> Position:
     old_pos_grid = None
-    position_row = row * DIMENTION_OF_A_CELL
-    position_col = col * DIMENTION_OF_A_CELL
-    if isSnakeFromTop(row, col, position_row, position_col):
-        old_pos_grid = (row - 1, col)
-    elif isSnakeFromBottom(row, col, position_row, position_col):
-        old_pos_grid = (row + 1, col)
-    elif isSnakeFromLeft(row, col, position_row, position_col):
-        old_pos_grid = (row, col - 1)
-    elif isSnakeFromRight(row, col, position_row, position_col):
-        old_pos_grid = (row, col + 1)
+    row = new_pos.row
+    col = new_pos.col
+    point = Point(x=col * DIMENTION_OF_A_CELL, y=row * DIMENTION_OF_A_CELL)
+    if isSnakeFromTop(row, col, point):
+        old_pos_grid = Position(row - 1, col)
+    elif isSnakeFromBottom(row, col, point):
+        old_pos_grid = Position(row + 1, col)
+    elif isSnakeFromLeft(row, col, point):
+        old_pos_grid = Position(row, col - 1)
+    elif isSnakeFromRight(row, col, point):
+        old_pos_grid = Position(row, col + 1)
 
     return old_pos_grid
 
 
-def isSnakeFromTop(row: int, col: int, position_row: int, position_col: int) -> bool:
+def isSnakeFromTop(row: int, col: int, point: Point) -> bool:
     return (
         row - 1 >= 0
-        and [position_col, position_row - DIMENTION_OF_A_CELL] in snake_list
+        and isPointInSnake(Point(point.x, point.y - DIMENTION_OF_A_CELL), snake_list)
         and path[row - 1][col] == Direction.DOWN_DIR
     )
 
 
-def isSnakeFromBottom(row: int, col: int, position_row: int, position_col: int) -> bool:
+def isSnakeFromBottom(row: int, col: int, point: Point) -> bool:
     return (
         row + 1 < NUM_OF_ROWS
-        and [position_col, position_row + DIMENTION_OF_A_CELL] in snake_list
+        and isPointInSnake(Point(point.x, point.y + DIMENTION_OF_A_CELL), snake_list)
         and path[row + 1][col] == Direction.UP_DIR
     )
 
 
-def isSnakeFromLeft(row: int, col: int, position_row: int, position_col: int) -> bool:
+def isSnakeFromLeft(row: int, col: int, point: Point) -> bool:
     return (
         col - 1 >= 0
-        and [position_col - DIMENTION_OF_A_CELL, position_row] in snake_list
+        and isPointInSnake(Point(point.x - DIMENTION_OF_A_CELL, point.y), snake_list)
         and path[row][col - 1] == Direction.RIGHT_DIR
     )
 
 
-def isSnakeFromRight(row: int, col: int, position_row: int, position_col: int) -> bool:
+def isSnakeFromRight(row: int, col: int, point: Point) -> bool:
     return (
         col + 1 < NUM_OF_COLUMNS
-        and [position_col + DIMENTION_OF_A_CELL, position_row] in snake_list
+        and isPointInSnake(Point(point.x + DIMENTION_OF_A_CELL, point.y), snake_list)
         and path[row][col + 1] == Direction.LEFT_DIR
     )
+
+
+def isPointInSnake(pos: Position, snake: list) -> bool:
+    for el in snake:
+        if pos.isEqual(el):
+            return True
+
+    return False
 
 
 def drawGameOver() -> None:
@@ -550,6 +615,18 @@ def drawGameOver() -> None:
     )
     pygame.display.flip()
     time.sleep(2)
+
+
+def getPointFromPosition(position: Position) -> Point:
+    return Point(
+        x=position.col * DIMENTION_OF_A_CELL, y=position.row * DIMENTION_OF_A_CELL
+    )
+
+
+def getPositionFromPoint(point: Point) -> Position:
+    return Position(
+        row=int(point.y // DIMENTION_OF_A_CELL), col=int(point.x // DIMENTION_OF_A_CELL)
+    )
 
 
 restart()
