@@ -12,6 +12,7 @@
 
 # region import
 from copy import copy
+from itertools import cycle
 import sys
 import pygame
 import pygame.freetype
@@ -38,6 +39,7 @@ directions = [1, 0]
 SNAKE_COLOR = (179, 134, 0)
 TEXT_COLOR_VICTORY = (140, 217, 179)
 TEXT_COLOR_DEFEAT = (255, 51, 51)
+TEXT_COLOR_NO_HAM = (42, 92, 173)
 APPLE_COLOR = (211, 0, 0)
 BORDER_GRID_COLOR = (255, 198, 26)
 BACKGROUND_GRID_COLOR = (50, 168, 164)
@@ -189,6 +191,8 @@ def generation_hamiltonian_cycle(start_point: Point) -> list:
     stack = []
     stack.append(StackFrameHam(copy(start_pos), cells_to_fill_remaining, 1))
 
+    cycle_found = False
+
     while True and stack:
         gamePause(TIME_SLEEP_HAMILTONIAN)
 
@@ -201,6 +205,7 @@ def generation_hamiltonian_cycle(start_point: Point) -> list:
 
         if cells_to_fill_remaining == 0:
             if pos.isEqual(start_pos):
+                cycle_found = True
                 break
             else:
                 # it does not complete the cycle
@@ -229,6 +234,9 @@ def generation_hamiltonian_cycle(start_point: Point) -> list:
 
         # endregion
 
+    if cycle_found == False:
+        manageNotExistingCycle()
+
     return grid
 
 
@@ -256,6 +264,17 @@ def prepareFollowingStepInCurrentCell(stack: list, stackFrame: StackFrameHam) ->
 
 def addLeafToPath(stack: list, stackFrame: StackFrameHam) -> None:
     stack.append(stackFrame)
+
+
+def manageNotExistingCycle() -> None:
+    msg = font_style.render(
+        "Wrong grid dimensions for Hamiltonian Cycle",
+        True,
+        TEXT_COLOR_NO_HAM,
+    )
+    drawMessage(msg)
+    gamePause(5)
+    sys.exit()
 
 
 def drawGridHamiltonian(start_pos: Position, grid: "list") -> None:
@@ -605,21 +624,25 @@ def isPointInSnake(pos: Position, snake: list) -> bool:
 
 
 def drawGameOver() -> None:
-    pygame.draw.rect(screen, BACKGROUND_COLOR, [0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT])
     if has_lost:
-        mesg = font_style.render("You lost :(", True, APPLE_COLOR)
+        msg = font_style.render("You lost :(", True, APPLE_COLOR)
     else:
-        mesg = font_style.render("You won!!", True, TEXT_COLOR_VICTORY)
+        msg = font_style.render("You won!!", True, TEXT_COLOR_VICTORY)
 
+    drawMessage(msg)
+    gamePause(2)
+
+
+def drawMessage(msg: font_style) -> None:
+    pygame.draw.rect(screen, BACKGROUND_COLOR, [0, 0, DISPLAY_WIDTH, DISPLAY_HEIGHT])
     screen.blit(
-        mesg,
+        msg,
         [
-            DISPLAY_WIDTH / 2 - mesg.get_rect().width / 2,
-            DISPLAY_HEIGHT / 2 - mesg.get_rect().height / 2,
+            DISPLAY_WIDTH / 2 - msg.get_rect().width / 2,
+            DISPLAY_HEIGHT / 2 - msg.get_rect().height / 2,
         ],
     )
     pygame.display.flip()
-    time.sleep(2)
 
 
 def getPointFromPosition(position: Position) -> Point:
