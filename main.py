@@ -71,13 +71,17 @@ class Point:
         return self.x == otherPoint.x and self.y == otherPoint.y
 
 
-Point2 = namedtuple("Point", "row col")
 StackFrameHam = namedtuple("StackFrame", "position n_remaining_cells direction_to_try")
 
 
 clock = pygame.time.Clock()
 
 # endregion
+
+
+def main():
+    restart()
+    gameLoop()
 
 
 def gameLoop() -> None:
@@ -174,6 +178,7 @@ def getChangeInPosition(point_head: Point) -> Direction:
     return directions
 
 
+# I couldn't use simple recursion because it exceeded the maximum depth. So, I implemented it using a stack
 def generation_hamiltonian_cycle(start_point: Point) -> list:
     start_pos = getPositionFromPoint(start_point)
 
@@ -629,5 +634,4 @@ def getPositionFromPoint(point: Point) -> Position:
     )
 
 
-restart()
-gameLoop()
+main()
